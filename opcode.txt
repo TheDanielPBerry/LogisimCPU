@@ -1,0 +1,70 @@
+
+
+
+
+
+
+
+
+ROGET_V3
+
+
+INPUTS:
+0	DATA IN		? ARGS	? Reads
+1	A		0 ARGS	1 Read
+2	B		0 ARGS	1 Read
+3	ARG0		1 ARG	1 Read
+4	ARG1		1 ARG	1?2 Reads
+5	SP0		0 ARGS	1 Read
+6	SP1		0 ARGS	1?2 Reads
+7	INDIRECT0	0 ARGS	1 Read
+8	INDIRECT1	0 ARGS	1?2 Reads
+9	PC0		0 ARGS	1 Read
+A	PC1		0 ARGS	1?2 Reads
+B	CMP TEST	0 ARGS	1 Read
+C	ALU		2 ARGS	1 Read
+D	ADDRESS MODE	0 ARGS	0 Reads
+E	INTERRUPT?		1 Read
+F
+
+
+
+
+
+
+
+
+
+
+
+OUTPUTS:
+0	DATA OUT	? ARGS	? Writes
+1	A		0 ARGS	1 Write
+2	B		0 ARGS	1 Write
+3	ARG0		1 ARG	1 Write
+4	ARG1		1 ARG	1 Write
+5	SP0		0 ARGS	1 Write
+6	SP1		0 ARGS	2 Writes
+7	INDIRECT0	0 ARGS	1 Write
+8	INDIRECT1	0 ARGS	2 Writes
+9	PC0		0 ARGS	1 Write
+A	PC1		0 ARGS	2 Writes
+B	CMP TEST	0 ARGS
+C	OPCODE		0 ARGS
+D	ADDRESS MODE
+E	INTERRUPT?
+F
+
+
+
+
+
+
+
+
+
+
+
+
+
+
