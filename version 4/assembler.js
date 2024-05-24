@@ -17,10 +17,10 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		let tokens = getTokens(line);
 		//Define is used for entrypoints and pointers
 		//Set is used for constants
-		if(['DEFINE', 'SET'].includes(tokens[0].toUpperCase())) {
+		if(['DEFINE', 'SET', 'CONST'].includes(tokens[0].toUpperCase())) {
 			let varName = tokens[1];
 			constants[varName] = {val: 0, refs: []};
-			if(tokens[0].toUpperCase() == 'SET' && tokens[2] == '=') {
+			if(['SET', 'CONST'].includes(tokens[0].toUpperCase()) && tokens[2] == '=') {
 				if(tokens[3].substring(0, 1) == '"' && tokens[3].substring(-1, 1) == '"') {
 					constants[varName].val = tokens[3].substring(1, -1);
 				} 
@@ -45,10 +45,9 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		}
 	});
 
-	let result = [];
 	
 	const parseToken = (token, offset) => {
-		if(token.substring(token.length-1).toLowerCase() == 'b') {
+		if(token.substring(0, 1) != ':' && token.substring(token.length-1).toLowerCase() == 'b') {
 			token = token.substring(0, token.length-1);
 			if(!isNaN(parseInt(token))) {
 				if(parseInt(token) >= 0) {
@@ -100,6 +99,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		'ARG1': 'E',
 		'': 'F'
 	};
+
 	const alu = (line) => {
 		line = line.split('//')[0];
 		//ADD PC,8 > IDX
@@ -108,7 +108,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		command += registerLookup[tokens[1]];
 
 		let alu = '';
-		let op = aluOps[line.split(' ')[0].toUpperCase()];
+		let op = aluOps[line.split(' ')[0].trim().toUpperCase()];
 		let quickVal = 0;
 		let params = tokens[0].split(',').map((token) => token.trim());
 		params.forEach((param) => {
@@ -130,11 +130,17 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 	}
 
 
+	
+	let result = [];
+	let currFunc = null;
+	let frameSize = 0;
+
 	lines.forEach((line, lineNumber) => {
+		let params = [];
 		let tokens = getTokens(line);
 		switch(tokens[0].toUpperCase()) {
 			case "MOV":
-				let params = line.split('//')[0].split('>').map((token) => token.trim().replace(/^MOV /, ''))
+				params = line.split('//')[0].split('>').map((token) => token.trim().replace(/^MOV /, ''))
 				let command ='';
 				let args = '';
 				let doubleArgs = false;
@@ -224,22 +230,142 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				alu(line);
 				break;
 
+			
+			case "CALL":
+				let func = line.match(/CALL\s{1,3}(?<name>:[\da-zA-Z]+)\((?<args>[:\da-zA-Z\s,]+)\)/i);
+				
+				frameSize = Object.values(constants[func.groups['name'].trim()]['offsets']).length * 2;
+				params = Object.values(constants[func.groups['name'].trim()]['offsets']).filter((offset) => offset.type=='param');
+
+				func.groups['args'].split(',').map((arg) => arg.trim()).forEach((arg, index) => {
+					if(arg.substring(0, 1) == ':') {
+						if(currFunc != null && Object.keys(constants[currFunc]).includes(arg)) {
+							result += '2A' + parseToken(arg, 2)[1];
+						} else {
+							result += '1A' + parseToken(arg, 2)[1];
+						}
+					} else {
+						result += 'EA' + parseToken(arg, 2)[1];
+					}
+					result += 'A2' + (frameSize+params[index].val).toString(16).padStart(4, '0');
+				});
+
+				result += 'EA' + frameSize.toString(16).padStart(4, '0');
+				result += 'BA8088';	//Add IDX to PC into IDX;
+				result += 'A20000';
+				result += 'db00'; //Clear conditional flags
+				result += 'E8' + parseToken(func.groups['name'].trim(), 2)[1];
+				//MOV 5 > D
+				//MOV D > MSP + 4 //Set d as param for next call
+				//ADD PC,8 > IDX	
+				//MOV IDX > MSP + 0 //Add return address
+
+			case "FUNC":
+				let offsets = {};
+				let funcName = line.match(/FUNC (:[\da-zA-Z]+)/i)[1];
+
+				let locals = line.match(/LOCAL\(([:\da-zA-Z\s,]+)\)/i)[1];
+				locals.split(',').forEach((localVar) => {
+					constants[localVar.trim()] = {
+						val: (Object.values(offsets).length+1)*-2,
+						refs: [],
+						bounds: [result.length, result.length+4],
+						type: 'local'
+					};
+					offsets[localVar.trim()] = constants[localVar.trim()];
+				});
+				
+				let paramList = line.match(/PARAM\(([:\da-zA-Z\s,]+)\)/i)[1];
+				paramList.split(',').forEach((param) => {
+					constants[param.trim()] = {
+						val: (Object.values(offsets).length+1)*-2,
+						refs: [],
+						bounds: [result.length, result.length+4],
+						type: 'param'
+					};
+					offsets[param.trim()] = constants[param.trim()];
+				});
+
+				let returnName = line.match(/RETURN\((:[\da-zA-Z]+)\)/i)[1];
+				offsets[returnName.trim()] = {
+					val: (Object.values(offsets).length+1) * -2,
+					refs: [],
+					bounds: [result.length, result.length+4],
+					type: 'returnVal'
+				};
+
+				offsets[':return_address'] = {
+					val: (Object.values(offsets).length+1) * -2,
+					refs: [],
+					bounds: [result.length, result.length+4],
+					type: 'returnAddr'
+				}
+				
+				constants[funcName] = {
+					refs: [],
+					val: result.length,
+					'offsets': offsets
+				};
+				currFunc = funcName;
+
+				frameSize = Object.values(offsets).length * 2;
+				//ADD SP,8 > SP
+				if(frameSize <= 14) {
+					result += 'B990' + (128+parseInt(frameSize)).toString(16); // Move stack pointer to frame size
+				} else {
+					result += 'E6' + parseInt(frameSize).toString(16).padStart(4, '0');//MOV $frameSize > C
+					result += 'B99680';	//Add C onto SP	
+				}
+
+				break;
+
+
+				break;
 			case "RETURN":
-				//RETURN 8 :a
-				result += '2A' + parseToken(tokens[2], 2)[1];	//Load return value into A
-				result += 'A2' + (65536 - parseInt(tokens[1])+2).toString(16);	//Save return value
-				result += 'B990' + (160+parseInt(tokens[1])).toString(16); // Move stack pointer to frame size
-				result += 'db00';	//NP CMP on return
-				result += '280000';	//Goto return address
+				//RETURN :a
+				//RETURN 8
+				//RETURN
+				if(currFunc != null && typeof(constants[currFunc]) !== 'undefined') {
+					frameSize = Object.values(constants[currFunc]['offsets']).length * 2;
+					if(tokens.length > 1) {
+						//Move return value
+						if(tokens[1].substring(0, 1) == ':') {
+							let offset = constants[currFunc]['offsets'][tokens[1]].val;
+							result += '2A' + (65536 + offset).toString(16);	//Load return value into IDX
+						} else {
+							result += 'EA' + parseToken(tokens[1], 2)[1];	//Load return value into IDX
+						}
+						result += 'A2' + (65536 - parseInt(frameSize)+2).toString(16);	//Save return value
+					}
+
+					if(frameSize <= 14) {
+						result += 'B990' + (160+parseInt(frameSize)).toString(16); // Move stack pointer to frame size
+					} else {
+						result += 'E6' + parseInt(frameSize).toString(16).padStart(4, '0');//MOV $frameSize > C
+						result += 'B996A0';	//Sub C from SP	
+					}
+					result += 'db00';	//NP CMP on return
+					result += '280000';	//Goto return address
+
+					//Set upper bound of function vars scope
+					Object.values(constants[currFunc]['offsets']).forEach((offset) => offset['bounds'][1] = result.length);
+					currFunc = null;
+				}
+				
 				//MSP + 2
 				break;
-			default:
-				
+			default:	
+				break;
 		}
 	});
 
 	Object.entries(constants).forEach(([token, constant]) => {
 		constant.refs.forEach((offset) => {
+			if(Object.keys(constant).includes('bounds')) {
+				if(offset > constant['bounds'][0] && offset < constant['bounds'][0]) {
+					return;	//Do not map a constant outside of function scope
+				}
+			}
 			result = result.substring(0, offset) + constant.val + result.substring(offset + constant.val.length);
 		});
 	});

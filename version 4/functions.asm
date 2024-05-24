@@ -1,18 +1,3 @@
-<html>
-	<head>
-		<style type="text/css">
-			.form-control {
-				width: 50%;
-				margin-left: auto;
-				margin-right: auto;
-				font-family: monospace;
-				display: block;
-				height: 400px;
-			}
-		</style>
-	</head>
-<body>
-<textarea id="editor" class="form-control">
 SET :je = 0x01b
 SET :jne = 0x08b
 SET :STACK_POINTER = 0x8000
@@ -46,11 +31,3 @@ MOV C > MEM + :returnVal
 
 DEFINE :end
 GOTO :end
-
-</textarea>
-<button id="assemble">Assemble</button>
-
-<textarea id="result" class="form-control"></textarea>
-<script src="assembler.js">
-</script>
-</body>
