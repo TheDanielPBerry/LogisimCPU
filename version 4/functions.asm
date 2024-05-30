@@ -8,11 +8,11 @@ SET :return = 0x0002
 MOV :STACK_POINTER > SP		//Initialize stack pointer
 GOTO :main
 
-DEFINE :returnVal
-RAW 0x0002
+DEFINE :answer
+RAW 0x0000
 
 DEFINE :arg0
-0x0002
+RAW 0x0002
 
 FUNC :sum > RETURN(:ret) > PARAM(:a, :b) > LOCAL(:result)
 	MOV MSP + :a > C
@@ -25,9 +25,10 @@ RETURN :result
 
 DEFINE :main
 CALL :sum(:arg0, 4)
-GOTO :end
+
 MOV MSP + :return > C
-MOV C > MEM + :returnVal
+MOV C > MEM + :answer
+
 
 DEFINE :end
 GOTO :end

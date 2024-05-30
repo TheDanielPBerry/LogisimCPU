@@ -3,7 +3,11 @@
 
 const getTokens = (line) => line.split('//')[0].split(' ').map((token) => token.trim());
 
-
+if (!Array.prototype.last){
+    Array.prototype.last = function() {
+        return this[this.length - 1];
+    };
+};
 
 //const fs = require('fs');
 //const source = fs.readFileSync('./write_line.asm').toString();
@@ -23,7 +27,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 			if(['SET', 'CONST'].includes(tokens[0].toUpperCase()) && tokens[2] == '=') {
 				if(tokens[3].substring(0, 1) == '"' && tokens[3].substring(-1, 1) == '"') {
 					constants[varName].val = tokens[3].substring(1, -1);
-				} 
+				}
 				else if(tokens[3].substring(tokens[3].length-1).toLowerCase() == 'b') {
 					let token = tokens[3].substring(0, tokens[3].length-1);
 					if(!isNaN(parseInt(token))) {
@@ -36,9 +40,9 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				}
 				else if(!isNaN(parseInt(tokens[3]))) {
 					if(parseInt(tokens[3]) >= 0) {
-						constants[varName].val = parseInt(tokens[3]).toString(16)
+						constants[varName].val = parseInt(tokens[3]).toString(16).padStart(4, '0');
 					} else {
-						constants[varName].val = (65536 + parseInt(tokens[3])).toString(16);
+						constants[varName].val = (65536 + parseInt(tokens[3])).toString(16).padStart(4, 'F');
 					}
 				}
 			}
@@ -64,7 +68,8 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		}
 		else if(token.match(/^\".*\"$/)) {
 			let raw = token.substring(1, token.length-1);
-			return ['str', raw.split('').reduce((acc, char) => acc + char.charCodeAt(0).toString(16), '') + '00'];
+			raw = raw.replaceAll("\\n", "\n");
+			return ['str', raw.split('').reduce((acc, char) => acc + char.charCodeAt(0).toString(16).padStart(2, '0'), '') + '00'];
 		}
 		else if(token.substring(0, 1) == ':') {
 			constants[token]['refs'].push(result.length+offset);
@@ -81,8 +86,19 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		'SUB': 160,
 		'MUL': 192,
 		'SHIFT': 224,
+		'DIV': 16,
+		'REM': 48,
+		"NAND": 80,
+		'ADD16': 112,
+		'SUB16': 144,
+		'MUL16': 176,
+		'DIV16': 208,
+		'REM16': 240
 	};
+	
+
 	const registerLookup = {
+		'NUL': '0',
 		'MEM': '1',
 		'MSP': '2',
 		'MIX': '3',
@@ -125,14 +141,14 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		if(alu.includes('0')) {
 			op += quickVal;
 		}
-		result += op.toString(16);
+		result += op.toString(16).padStart(2, '0');
 
 	}
 
 
 	
 	let result = [];
-	let currFunc = null;
+	let currFunc = [];
 	let frameSize = 0;
 
 	lines.forEach((line, lineNumber) => {
@@ -204,7 +220,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				break;
 
 			case "JE":
-				result += 'db02'; //eq
+				result += 'db01'; //eq
 				result += 'e8' + parseToken(tokens[1], 2)[1];
 				break;
 					
@@ -223,34 +239,43 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 			case "SUB":
 			case "MUL":
 			case "DIV":
+			case "REM":
 			case "OR":
 			case "AND":
 			case "NOT":
 			case "XOR":
+			case "ADD16":
+			case "SUB16":
+			case "MUL16":
+			case "DIV16":
+			case "REM16":
 				alu(line);
 				break;
 
 			
 			case "CALL":
-				let func = line.match(/CALL\s{1,3}(?<name>:[\da-zA-Z]+)\((?<args>[:\da-zA-Z\s,]+)\)/i);
+				let func = line.match(/CALL\s{1,3}(?<name>:[\da-z_A-Z]+)\((?<args>[:\da-z_&A-Z\s,]*)\)/i);
 				
 				frameSize = Object.values(constants[func.groups['name'].trim()]['offsets']).length * 2;
 				params = Object.values(constants[func.groups['name'].trim()]['offsets']).filter((offset) => offset.type=='param');
-
-				func.groups['args'].split(',').map((arg) => arg.trim()).forEach((arg, index) => {
-					if(arg.substring(0, 1) == ':') {
-						if(currFunc != null && Object.keys(constants[currFunc]).includes(arg)) {
-							result += '2A' + parseToken(arg, 2)[1];
+				if(func.groups['args'].length > 0) {
+					func.groups['args'].split(',').map((arg) => arg.trim()).forEach((arg, index) => {
+						if(arg.substring(0, 1) == ':') {
+							if(currFunc.length > 0 && typeof(constants[currFunc.last()].offsets) !== 'undefined' && Object.keys(constants[currFunc.last()].offsets).includes(arg)) {
+								result += '2A' + parseToken(arg, 2)[1];
+							} else {
+								result += '1A' + parseToken(arg, 2)[1];
+							}
+						} else if(arg.substring(0, 1) == '&') {
+							result += 'EA' + parseToken(arg.replace('&', ':'), 2)[1];
 						} else {
-							result += '1A' + parseToken(arg, 2)[1];
+							result += 'EA' + parseToken(arg, 2)[1];
 						}
-					} else {
-						result += 'EA' + parseToken(arg, 2)[1];
-					}
-					result += 'A2' + (frameSize+params[index].val).toString(16).padStart(4, '0');
-				});
+						result += 'A2' + (frameSize+params[index].val).toString(16).padStart(4, '0');
+					});
+				}
 
-				result += 'EA' + frameSize.toString(16).padStart(4, '0');
+				//result += 'EA' + frameSize.toString(16).padStart(4, '0');
 				result += 'BA8088';	//Add IDX to PC into IDX;
 				result += 'A20000';
 				result += 'db00'; //Clear conditional flags
@@ -259,34 +284,39 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				//MOV D > MSP + 4 //Set d as param for next call
 				//ADD PC,8 > IDX	
 				//MOV IDX > MSP + 0 //Add return address
+				break;
 
 			case "FUNC":
 				let offsets = {};
-				let funcName = line.match(/FUNC (:[\da-zA-Z]+)/i)[1];
+				let funcName = line.match(/FUNC (:[\da-z_A-Z]+)/i)[1];
 
-				let locals = line.match(/LOCAL\(([:\da-zA-Z\s,]+)\)/i)[1];
-				locals.split(',').forEach((localVar) => {
-					constants[localVar.trim()] = {
-						val: (Object.values(offsets).length+1)*-2,
-						refs: [],
-						bounds: [result.length, result.length+4],
-						type: 'local'
-					};
-					offsets[localVar.trim()] = constants[localVar.trim()];
-				});
+				let locals = line.match(/LOCAL\(([:\da-z_A-Z\s,]*)\)/i);
+				if(locals.length > 1 && locals[1] !== '') {
+					locals[1].split(',').forEach((localVar) => {
+						constants[localVar.trim()] = {
+							val: (Object.values(offsets).length+1)*-2,
+							refs: [],
+							bounds: [result.length, result.length+4],
+							type: 'local'
+						};
+						offsets[localVar.trim()] = constants[localVar.trim()];
+					});
+				}
 				
-				let paramList = line.match(/PARAM\(([:\da-zA-Z\s,]+)\)/i)[1];
-				paramList.split(',').forEach((param) => {
-					constants[param.trim()] = {
-						val: (Object.values(offsets).length+1)*-2,
-						refs: [],
-						bounds: [result.length, result.length+4],
-						type: 'param'
-					};
-					offsets[param.trim()] = constants[param.trim()];
-				});
+				let paramList = line.match(/PARAM\(([:\da-z_A-Z\s,]*)\)/i);
+				if(paramList.length > 1 && paramList[1] !== '') {
+					paramList[1].split(',').forEach((param) => {
+						constants[param.trim()] = {
+							val: (Object.values(offsets).length+1)*-2,
+							refs: [],
+							bounds: [result.length, result.length+4],
+							type: 'param'
+						};
+						offsets[param.trim()] = constants[param.trim()];
+					});
+				}
 
-				let returnName = line.match(/RETURN\((:[\da-zA-Z]+)\)/i)[1];
+				let returnName = line.match(/RETURN\((:[\da-z_A-Z]+)\)/i)[1];
 				offsets[returnName.trim()] = {
 					val: (Object.values(offsets).length+1) * -2,
 					refs: [],
@@ -303,10 +333,10 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				
 				constants[funcName] = {
 					refs: [],
-					val: result.length,
+					val: (result.length/2).toString(16).padStart(4, '0'),
 					'offsets': offsets
 				};
-				currFunc = funcName;
+				currFunc.push(funcName);
 
 				frameSize = Object.values(offsets).length * 2;
 				//ADD SP,8 > SP
@@ -320,17 +350,16 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				break;
 
 
-				break;
 			case "RETURN":
 				//RETURN :a
 				//RETURN 8
 				//RETURN
-				if(currFunc != null && typeof(constants[currFunc]) !== 'undefined') {
-					frameSize = Object.values(constants[currFunc]['offsets']).length * 2;
+				if(currFunc.length > 0 && typeof(constants[currFunc.last()]) !== 'undefined') {
+					frameSize = Object.values(constants[currFunc.last()]['offsets']).length * 2;
 					if(tokens.length > 1) {
 						//Move return value
 						if(tokens[1].substring(0, 1) == ':') {
-							let offset = constants[currFunc]['offsets'][tokens[1]].val;
+							let offset = constants[currFunc.last()]['offsets'][tokens[1]].val;
 							result += '2A' + (65536 + offset).toString(16);	//Load return value into IDX
 						} else {
 							result += 'EA' + parseToken(tokens[1], 2)[1];	//Load return value into IDX
@@ -348,8 +377,8 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 					result += '280000';	//Goto return address
 
 					//Set upper bound of function vars scope
-					Object.values(constants[currFunc]['offsets']).forEach((offset) => offset['bounds'][1] = result.length);
-					currFunc = null;
+					Object.values(constants[currFunc.last()]['offsets']).forEach((offset) => offset['bounds'][1] = result.length);
+					currFunc.pop();
 				}
 				
 				//MSP + 2
@@ -366,7 +395,15 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 					return;	//Do not map a constant outside of function scope
 				}
 			}
-			result = result.substring(0, offset) + constant.val + result.substring(offset + constant.val.length);
+			let substitute = constant.val;
+			if(typeof(constant.val) === 'number') {
+				if(constant.val >= 0) {
+					substitute = parseInt(constant.val).toString(16).padStart(4, '0');
+				} else {
+					substitute = (65536 + parseInt(constant.val)).toString(16).padStart(4, 'F');
+				}
+			}
+			result = result.substring(0, offset) + substitute + result.substring(offset + substitute.length);
 		});
 	});
 

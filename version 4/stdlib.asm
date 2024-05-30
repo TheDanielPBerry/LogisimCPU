@@ -1,18 +1,3 @@
-<html>
-	<head>
-		<style type="text/css">
-			.form-control {
-				width: 50%;
-				margin-left: auto;
-				margin-right: auto;
-				font-family: monospace;
-				display: block;
-				height: 400px;
-			}
-		</style>
-	</head>
-<body>
-<textarea id="editor" class="form-control">
 //CPU based locations
 SET :je = 0x01b
 SET :jne = 0x08b
@@ -20,7 +5,8 @@ SET :return = 0x0002
 
 //Pointers
 SET :STACK_POINTER = 0x6000
-SET :HEAP_POINTER = 0x1200
+SET :HEAP_REFERENCE = 0xA000
+SET :HEAP_POINTER = 0xB000
 
 //Device Addresses
 SET :putchar = 0xFF01	//Device id in memory for the character write
@@ -140,6 +126,8 @@ DEFINE :loop_scanline
 	ADD IDX,1 > IDX
 GOTO :loop_scanline
 DEFINE :return_scanline
+MOV 0 > A
+MOV A > MIX + 1
 RETURN
 
 
@@ -156,9 +144,12 @@ RAW "                                                                           
 DEFINE :main
 CALL :scanline(:scan_in)
 
+CALL :breakpoint()
+
 CALL :StringLength(&scan_in)
 MOV MSP + :return > C
 MOV C > MEM + :answer
+
 
 CALL :ToString(:answer, &num_string_pointer)
 
@@ -167,10 +158,3 @@ CALL :print(&num_string_pointer)
 
 DEFINE :end
 GOTO :end
-</textarea>
-<button id="assemble">Assemble</button>
-
-<textarea id="result" class="form-control"></textarea>
-<script src="assembler.js">
-</script>
-</body>
