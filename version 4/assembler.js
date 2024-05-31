@@ -209,8 +209,8 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				break;
 
 			case "RAW":
-				let raw = line.substring(4).trim();
-				result += parseToken(raw, 2)[1];
+				let raw = line.substring(4).split("//")[0].trim();
+				result += parseToken(raw, 0)[1];
 				break;
 
 			case "GOTO":

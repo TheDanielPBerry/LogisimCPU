@@ -2,6 +2,7 @@
 SET :je = 0x01b
 SET :jne = 0x08b
 SET :return = 0x0002
+SET :return_b = 0x0003
 
 //Pointers
 SET :STACK_POINTER = 0x6000
@@ -45,7 +46,8 @@ FUNC :InitializeHeap > RETURN(:ret) > PARAM() > LOCAL()
 	MOV C > MIX + :heap_block_upper	//Initialize lower and upper branches as empty
 	MOV 1 > A
 	MOV A > MIX + :heap_block_free	//Intialize first block as occupied
-RETURN 0
+	RETURN
+//func :InitializeHeap
 
 
 
@@ -169,7 +171,6 @@ FUNC :free > RETURN(:ret) > PARAM(:heap_block_addr_free) > LOCAL(:lower_bound_fr
 	DEFINE :free_block_free
 		MOV NUL > A
 		MOV A > MIX + :heap_block_free
-		RETURN 1
 	//:free_block_free
 
 	DEFINE :return_free
@@ -189,11 +190,13 @@ FUNC :print > RETURN(:ret) > PARAM(:str_print) > LOCAL()
 
 		MOV A > MEM + :putchar	//output character
 		ADD IDX,1 > IDX		//Increment C by 1
-	GOTO :loop_print
+		GOTO :loop_print
+	//:loop_print
 
-DEFINE :return_print
-RETURN
-
+	DEFINE :return_print
+		RETURN
+	//:return_print
+//func :print
 
 DEFINE :DisplayBreakpoint
 RAW "Press Enter to Continue\n"
@@ -287,6 +290,36 @@ FUNC :ToString > RETURN(:ret) > PARAM(:num_ToString, :result_ToString) > LOCAL()
 	//:return_ToString
 //func :ToString
 
+
+//a and b string are pointers to the first character of each string
+FUNC :cmp_str > RETURN(:ret) > PARAM(:a_cmp_str, :b_cmp_str) > LOCAL(:result_cmp_str)
+	MOV NUL > D
+	MOV D > MSP + :result_cmp_str
+	DEFINE :loop_cmp_str
+		MOV MSP + :a_cmp_str > C
+		ADD C, D > IDX
+		MOV MIX + 0 > A
+
+		MOV MSP + :b_cmp_str > C
+		ADD C, D > IDX
+		MOV MIX + 0 > B
+
+		OR A,B > NUL
+		JNE :false_cmp_str
+
+		ADD D,1 > D
+
+		OR A,0 > NUL
+		JNE :loop_cmp_str	//If A == B && A is 0, then return true
+		MOV 0x0101 > C
+		MOV C > MSP + :result_cmp_str
+	//:loop_cmp_str
+	
+	DEFINE :false_cmp_str
+		RETURN :result_cmp_str
+	//:false_cmp_str
+//func :cmp_str
+
 FUNC :scanline > RETURN(:ret) > PARAM(:result_scanline) > LOCAL()
 	MOV 10 > B
 	MOV MSP + :result_scanline > IDX	//Initialize at start of destination string
@@ -304,48 +337,17 @@ FUNC :scanline > RETURN(:ret) > PARAM(:result_scanline) > LOCAL()
 	DEFINE :return_scanline
 		MOV NUL > A
 		MOV A > MIX + 0
-		RETURN 0
+		RETURN
 	//:return_scanline
 //func :scanline
 
 
-FUNC :keycallback > RETURN(:ret) > PARAM(:result_scanline) > LOCAL()
-	MOV 10 > B
-	MOV MSP + :result_scanline > IDX	//Initialize at start of destination string
-	DEFINE :loop_scanline
-		MOV MEM + :getchar > A
-		OR A,0 > A
-		JE :loop_scanline		//If char was null, then don't push onto string
-		MOV A > MEM + :putchar
-		AND A,B > NUL			//Compare with line feed
-		JE :return_scanline
-		MOV A > MIX + 0
-		ADD IDX,1 > IDX
-		GOTO :loop_scanline
-	//:loop_scanline
-	DEFINE :return_scanline
-		MOV NUL > A
-		MOV A > MIX + 0
-		RETURN 0
-	//:return_scanline
-//func :scanline
-
-
-SET :GPU_CONTROLLER = 0xFF40
-SET :GPU_CMD = 0x0001
-SET :GPU_FILL_CMD = 0x02
-SET :GPU_X_COORD = 0x0002
-SET :GPU_Y_COORD = 0x0003
-SET :GPU_X_VEC = 0x0004
-SET :GPU_Y_VEC = 0x0005
-SET :GPU_RED = 0x0006
-SET :GPU_GREEN = 0x0007
-SET :GPU_BLUE = 0x0008
 
 
 SET :GPU_CONTROLLER = 0xFF40
 SET :GPU_CMD = 0x0001
 SET :GPU_FILL_CMD = 0x02b
+SET :GPU_CLEAR_SCREEN_CMD = 0x01b
 SET :GPU_X_COORD = 0x0002
 SET :GPU_Y_COORD = 0x0003
 SET :GPU_X_VEC = 0x0004
@@ -391,25 +393,30 @@ FUNC :busy_wait > RETURN(:ret) > PARAM(:cycle_wait) > LOCAL()
 //func :busy_wait
 
 DEFINE :paint_program_instructions
-RAW "USE WASD to move the paddle\nPress Q to close the program"
+RAW "Use the joystick to move the paintbrush\nPress <q> on the keyboard to close the program\n"
 
-FUNC :paint_program > RETURN(:ret) > PARAM() > LOCAL()
+FUNC :paint_program > RETURN(:ret) > PARAM() > LOCAL(:paddle_rectangle, :paddle_rectangle_vec)
+	//Initialize local vars
+	MOV 0x7e7e > C
+	MOV C > MSP + :paddle_rectangle
+	MOV 0x8282 > C
+	MOV C > MSP + :paddle_rectangle_vec
+	
 	CALL :print(&paint_program_instructions)
 	
+	MOV :GPU_CONTROLLER > IDX
+	MOV :GPU_CLEAR_SCREEN_CMD > A
+	MOV A > MIX + :GPU_CMD
+
 	CALL :SetColor(&default_color)
+	MOV NUL > C
+	JMP :paint_rectangle_paint_program
 
 	DEFINE :loop_paint_program
 		MOV MEM + :getchar > A
-		MOV 0x60 > B
-		SUB A,B > A
-		MOV 0xFC00 > C
-		OR A,1 > NUL
-		JE :paint_rectangle_paint_program
-		MOV 0x0400 > C
-		OR A,4 > NUL
-		JMP :paint_rectangle_paint_program	//Flag is still set to eq
-		OR A,17 > NUL
-		JMP :quit_paint_program	//Flag is still set to eq
+		MOV 0x71 > B	//Ascii for lowercase q
+		OR A,B > NUL
+		JE :quit_paint_program
 		MOV MEM + :joystick > C
 		MOV NUL > D
 		ADD16 D,C > NUL
@@ -417,14 +424,13 @@ FUNC :paint_program > RETURN(:ret) > PARAM() > LOCAL()
 	//:loop_paint_program
 
 	DEFINE :paint_rectangle_paint_program
-		MOV :paddle_rectangle > IDX
-		MOV MIX + 0 > D
+		MOV MSP + :paddle_rectangle > D
 		ADD D,C > D
-		MOV D > MIX + 0
+		MOV D > MSP + :paddle_rectangle
 
-		MOV MIX + 2 > D
+		MOV MSP + :paddle_rectangle_vec > D
 		ADD D,C > D
-		MOV D > MIX + 2
+		MOV D > MSP + :paddle_rectangle_vec
 		
 		CALL :DrawRect(:paddle_rectangle, :paddle_rectangle_vec)
 
@@ -438,55 +444,137 @@ FUNC :paint_program > RETURN(:ret) > PARAM() > LOCAL()
 //func :paint_program
 
 
-DEFINE :num_string_pointer
-RAW 0x0000
+FUNC :pong > RETURN(:ret) > PARAM() > LOCAL()
+	RETURN
+//func :pong
 
-DEFINE :answer
-RAW 0x0000
 
-DEFINE :message
-RAW "Result Length: "
-
-DEFINE :prompt
+DEFINE :startup_prompt
+RAW "Type 'help' or 'list' to see a list of available programs\n"
+DEFINE :shell_prompt
 RAW "> "
 
-DEFINE :scan_in
-RAW 0x0000
+
+FUNC :shell > RETURN(:ret) > PARAM() > LOCAL(:command_shell, :cmp_str_shell, :search_index_shell)
+	CALL :malloc(127)
+	MOV MSP + :return > C
+	MOV C > MSP + :command_shell 	//Initialize command string
+
+	CALL :print(&startup_prompt)
+
+	DEFINE :loop_shell
+		CALL :print(&shell_prompt)
+
+		CALL :scanline(:command_shell)
+
+		MOV :program_table > IDX
+		MOV IDX > MSP + :search_index_shell
+		
+		DEFINE :search_program_table_shell
+			MOV MSP + :search_index_shell > IDX
+			MOV MIX + 0 > D
+			MOV D > MSP + :cmp_str_shell
+
+			OR D,0 > NUL
+			JE :program_not_found
+
+			CALL :cmp_str(:command_shell, :cmp_str_shell)
+			MOV MSP + :return_b > A
+			OR A,1 > NUL
+			JE :start_program_shell
+			
+			//If not equal, then incrment to next entry and keep looking
+			MOV MSP + :search_index_shell > IDX
+			ADD IDX,4 > D
+			MOV D > MSP + :search_index_shell
+			GOTO :search_program_table_shell
+		//:search_program_table_shell
+
+		DEFINE :start_program_shell
+			MOV MSP + :search_index_shell > IDX
+			MOV MIX + 2 > C
+			ADD PC,6 > IDX
+			MOV IDX > MSP + 0
+			MOV 0 > CMP
+			MOV C > PC
+		//:start_program_shell
+
+		GOTO :loop_shell
+	//:loop_shell
+	
+	DEFINE :program_not_found
+		CALL :print(&not_found_str)
+		GOTO :loop_shell
+DEFINE :not_found_str
+RAW "Program Not Found\n"
+	//:program_not_found
+//func :shell
+
+
+FUNC :list > RETURN(:ret) > PARAM() > LOCAL(:index_list, :str_list)
+	MOV :program_table > IDX
+	MOV IDX > MSP + :index_list
+	DEFINE :loop_list
+		MOV MSP + :index_list > IDX
+		MOV MIX + 0 > D
+		
+		OR D,0 > NUL
+		JE :return_list
+
+		MOV D > MSP + :str_list
+
+		ADD IDX,4 > D
+		MOV D > MSP + :index_list
+
+		CALL :print(:str_list)
+		MOV 0x0a > A
+		MOV A > MEM + :putchar	//line break
+
+		GOTO :loop_list
+	//:loop_list
+	DEFINE :return_list
+		RETURN
+	//:return_list
+//func :list
+
+FUNC :calc > RETURN(:ret) > PARAM() > LOCAL()
+	RETURN
+//func :calc
 
 DEFINE :default_color
 RAW 0x22EE22
 
-DEFINE :black_color
-RAW "\0\0\0"
-
-DEFINE :paddle_rectangle
-RAW 0x80f2
-DEFINE :paddle_rectangle_vec
-RAW 0x8af6
 
 DEFINE :main
-	CALL :paint_program()
 	CALL :InitializeHeap()
-
-	CALL :malloc(6)
-	MOV MSP + :return > IDX
-	MOV IDX > MEM + :num_string_pointer
-
-
-	CALL :malloc(127)
-	MOV MSP + :return > IDX
-	MOV IDX > MEM + :scan_in
-
-	CALL :print(&prompt)
-
-	CALL :scanline(:scan_in)
-
-
-	CALL :print(:scan_in)
-	MOV 0x0a > A
-	MOV A > MEM + :putchar	//line break
 	
+	CALL :shell()
 
 //:main
 DEFINE :end
 GOTO :end
+
+
+DEFINE :program_table
+RAW :paint_shell_cmd		//String to compare with
+RAW :paint_program			//Entrypoint to program function
+
+RAW :pong_shell_cmd
+RAW :pong
+
+RAW :calc_shell_cmd
+RAW :calc
+
+RAW :list_shell_cmd
+RAW :list
+RAW 0x0000	//Terminate end of program table
+
+
+DEFINE :calc_shell_cmd
+RAW "calc"
+DEFINE :list_shell_cmd
+RAW "list"
+DEFINE :paint_shell_cmd
+RAW "paint"
+DEFINE :pong_shell_cmd
+RAW "pong"
