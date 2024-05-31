@@ -12,7 +12,6 @@ SET :HEAP_POINTER = 0xB000
 SET :putchar = 0xFF01	//Device id in memory for the character write
 SET :getchar = 0xFF02	//Device id in memory to read from the keyboard
 SET :bell = 0xFF80		//Device id in memory for the bell
-SET :joystick = 0xFF03	//Device id in memory for the joystick input
 
 
 MOV :STACK_POINTER > SP		//Initialize stack pointer
@@ -184,11 +183,11 @@ FUNC :print > RETURN(:ret) > PARAM(:str_print) > LOCAL()
 	DEFINE :loop_print
 		MOV MIX + 0 > A
 
-		OR A,0 > NUL
+		OR 0,A > A	
 		JE :return_print //If character is null, stop and return
 
 		MOV A > MEM + :putchar	//output character
-		ADD IDX,1 > IDX		//Increment C by 1
+		ADD 1,IDX > IDX		//Increment C by 1
 	GOTO :loop_print
 
 DEFINE :return_print
@@ -309,40 +308,6 @@ FUNC :scanline > RETURN(:ret) > PARAM(:result_scanline) > LOCAL()
 //func :scanline
 
 
-FUNC :keycallback > RETURN(:ret) > PARAM(:result_scanline) > LOCAL()
-	MOV 10 > B
-	MOV MSP + :result_scanline > IDX	//Initialize at start of destination string
-	DEFINE :loop_scanline
-		MOV MEM + :getchar > A
-		OR A,0 > A
-		JE :loop_scanline		//If char was null, then don't push onto string
-		MOV A > MEM + :putchar
-		AND A,B > NUL			//Compare with line feed
-		JE :return_scanline
-		MOV A > MIX + 0
-		ADD IDX,1 > IDX
-		GOTO :loop_scanline
-	//:loop_scanline
-	DEFINE :return_scanline
-		MOV NUL > A
-		MOV A > MIX + 0
-		RETURN 0
-	//:return_scanline
-//func :scanline
-
-
-SET :GPU_CONTROLLER = 0xFF40
-SET :GPU_CMD = 0x0001
-SET :GPU_FILL_CMD = 0x02
-SET :GPU_X_COORD = 0x0002
-SET :GPU_Y_COORD = 0x0003
-SET :GPU_X_VEC = 0x0004
-SET :GPU_Y_VEC = 0x0005
-SET :GPU_RED = 0x0006
-SET :GPU_GREEN = 0x0007
-SET :GPU_BLUE = 0x0008
-
-
 SET :GPU_CONTROLLER = 0xFF40
 SET :GPU_CMD = 0x0001
 SET :GPU_FILL_CMD = 0x02b
@@ -379,114 +344,14 @@ FUNC :SetColor > RETURN(:ret) > PARAM(:color_SetColor) > LOCAL()
 	RETURN
 //func :SetColor
 
-FUNC :busy_wait > RETURN(:ret) > PARAM(:cycle_wait) > LOCAL()
-	MOV MSP + :cycle_wait > C
-	MOV NUL > D
-	DEFINE :loop_busy_wait
-		ADD D,1 > D
-		ADD16 D,C > NUL
-		JLT :loop_busy_wait
-	//:loop_busy_wait
-	RETURN
-//func :busy_wait
-
-DEFINE :paint_program_instructions
-RAW "USE WASD to move the paddle\nPress Q to close the program"
-
-FUNC :paint_program > RETURN(:ret) > PARAM() > LOCAL()
-	CALL :print(&paint_program_instructions)
-	
-	CALL :SetColor(&default_color)
-
-	DEFINE :loop_paint_program
-		MOV MEM + :getchar > A
-		MOV 0x60 > B
-		SUB A,B > A
-		MOV 0xFC00 > C
-		OR A,1 > NUL
-		JE :paint_rectangle_paint_program
-		MOV 0x0400 > C
-		OR A,4 > NUL
-		JMP :paint_rectangle_paint_program	//Flag is still set to eq
-		OR A,17 > NUL
-		JMP :quit_paint_program	//Flag is still set to eq
-		MOV MEM + :joystick > C
-		MOV NUL > D
-		ADD16 D,C > NUL
-		JE :loop_paint_program
-	//:loop_paint_program
-
-	DEFINE :paint_rectangle_paint_program
-		MOV :paddle_rectangle > IDX
-		MOV MIX + 0 > D
-		ADD D,C > D
-		MOV D > MIX + 0
-
-		MOV MIX + 2 > D
-		ADD D,C > D
-		MOV D > MIX + 2
-		
-		CALL :DrawRect(:paddle_rectangle, :paddle_rectangle_vec)
-
-		GOTO :loop_paint_program
-	//:paint_rectangle_paint_program
-	
-
-	DEFINE :quit_paint_program
-		RETURN
-	//:quit_paint_program
-//func :paint_program
-
-
-DEFINE :num_string_pointer
-RAW 0x0000
-
-DEFINE :answer
-RAW 0x0000
-
-DEFINE :message
-RAW "Result Length: "
-
-DEFINE :prompt
-RAW "> "
-
-DEFINE :scan_in
-RAW 0x0000
 
 DEFINE :default_color
-RAW 0x22EE22
+RAW 0xDDFF22
 
-DEFINE :black_color
-RAW "\0\0\0"
-
-DEFINE :paddle_rectangle
-RAW 0x80f2
-DEFINE :paddle_rectangle_vec
-RAW 0x8af6
 
 DEFINE :main
-	CALL :paint_program()
-	CALL :InitializeHeap()
+	CALL :SetColor(&default_color)
+	CALL :DrawRect(0x1010, 0x2020)
 
-	CALL :malloc(6)
-	MOV MSP + :return > IDX
-	MOV IDX > MEM + :num_string_pointer
-
-
-	CALL :malloc(127)
-	MOV MSP + :return > IDX
-	MOV IDX > MEM + :scan_in
-
-	CALL :print(&prompt)
-
-	CALL :scanline(:scan_in)
-
-
-	CALL :print(:scan_in)
-	MOV 0x0a > A
-	MOV A > MEM + :putchar	//line break
-	
-
-//:main
 DEFINE :end
 GOTO :end

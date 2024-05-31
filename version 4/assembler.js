@@ -69,6 +69,9 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		else if(token.match(/^\".*\"$/)) {
 			let raw = token.substring(1, token.length-1);
 			raw = raw.replaceAll("\\n", "\n");
+			raw = raw.replaceAll("\\0", "\0");
+			raw = raw.replaceAll("\\r", "\r");
+			raw = raw.replaceAll("\\t", "\t");
 			return ['str', raw.split('').reduce((acc, char) => acc + char.charCodeAt(0).toString(16).padStart(2, '0'), '') + '00'];
 		}
 		else if(token.substring(0, 1) == ':') {
@@ -113,7 +116,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		'OPCODE': 'C',
 		'ARG0': 'D',
 		'ARG1': 'E',
-		'': 'F'
+		'NUL16': 'F'
 	};
 
 	const alu = (line) => {
@@ -177,7 +180,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 							args = parseToken(paramTokens[1], 2)[1];
 						}
 					} else {
-						command += '0';
+						command += '?';
 						args = parseToken(paramTokens[0], 2)[1];
 						if(doubleShot) {
 							doubleArgs = true;
@@ -190,8 +193,8 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 						doubleShot = true;
 					}
 				});
-				if(command.includes('0')) {
-					command = command.replace('0', doubleArgs ? 'E' : 'D');
+				if(command.includes('?')) {
+					command = command.replace('?', doubleArgs ? 'E' : 'D');
 				}
 				if(!doubleArgs) {
 					args = args.substring(args.length-2);
@@ -230,7 +233,17 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 				break;
 
 			case "JLTE":
-				result += 'db10'; //No lt or eq
+				result += 'db10'; //less than or equal to
+				result += 'e8' + parseToken(tokens[1], 2)[1];
+				break;
+
+			case "JGT":
+				result += 'db02'; //greater than
+				result += 'e8' + parseToken(tokens[1], 2)[1];
+				break;
+
+			case "JLT":
+				result += 'db04'; //less than
 				result += 'e8' + parseToken(tokens[1], 2)[1];
 				break;
 					
@@ -244,6 +257,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 			case "AND":
 			case "NOT":
 			case "XOR":
+			case "SHIFT":
 			case "ADD16":
 			case "SUB16":
 			case "MUL16":
