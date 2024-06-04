@@ -6,7 +6,6 @@ SET :return_b = 0x0003
 
 //Pointers
 SET :STACK_POINTER = 0x6000
-SET :HEAP_REFERENCE = 0xA000
 SET :HEAP_POINTER = 0xB000
 
 //Device Addresses
@@ -14,6 +13,7 @@ SET :putchar = 0xFF01	//Device id in memory for the character write
 SET :getchar = 0xFF02	//Device id in memory to read from the keyboard
 SET :bell = 0xFF80		//Device id in memory for the bell
 SET :joystick = 0xFF03	//Device id in memory for the joystick input
+SET :CLEAR_TTY = 0xFF05		//Device id in memory for the to clear the typewriter
 
 
 MOV :STACK_POINTER > SP		//Initialize stack pointer
@@ -198,6 +198,12 @@ FUNC :print > RETURN(:ret) > PARAM(:str_print) > LOCAL()
 	//:return_print
 //func :print
 
+FUNC :clear_tty > RETURN(:ret) > PARAM() > LOCAL()
+	MOV 1 > A
+	MOV A > MEM + :CLEAR_TTY
+	RETURN
+//func :clear_tty
+
 DEFINE :DisplayBreakpoint
 RAW "Press Enter to Continue\n"
 
@@ -321,19 +327,30 @@ FUNC :cmp_str > RETURN(:ret) > PARAM(:a_cmp_str, :b_cmp_str) > LOCAL(:result_cmp
 //func :cmp_str
 
 FUNC :scanline > RETURN(:ret) > PARAM(:result_scanline) > LOCAL()
-	MOV 10 > B
 	MOV MSP + :result_scanline > IDX	//Initialize at start of destination string
+	MOV IDX > D	//Initialize at start of destination string
 	DEFINE :loop_scanline
 		MOV MEM + :getchar > A
 		OR A,0 > A
 		JE :loop_scanline		//If char was null, then don't push onto string
+		MOV 8 > B
+		OR A,B > NUL			//Compare with backspace
+		JE :backspace_scanline
 		MOV A > MEM + :putchar
+		MOV 10 > B
 		AND A,B > NUL			//Compare with line feed
 		JE :return_scanline
 		MOV A > MIX + 0
 		ADD IDX,1 > IDX
 		GOTO :loop_scanline
 	//:loop_scanline
+	DEFINE :backspace_scanline
+		ADD16 IDX,D > NUL
+		JE :loop_scanline
+		MOV A > MEM + :putchar
+		SUB IDX,1 > IDX
+		GOTO :loop_scanline
+	//:backspace_scanline
 	DEFINE :return_scanline
 		MOV NUL > A
 		MOV A > MIX + 0
@@ -443,10 +460,196 @@ FUNC :paint_program > RETURN(:ret) > PARAM() > LOCAL(:paddle_rectangle, :paddle_
 	//:quit_paint_program
 //func :paint_program
 
+DEFINE :black_color
+RAW 0x0000
+RAW 0x00b
 
-FUNC :pong > RETURN(:ret) > PARAM() > LOCAL()
-	RETURN
+DEFINE :pong_instructions
+RAW "Use the <a> and <d> keys to move the lower paddle left and right\nPress <q> to exit the program\nScore: "
+DEFINE :lose_pong
+RAW "\nGame Over\n"
+
+FUNC :pong > RETURN(:ret) > PARAM() > LOCAL(:paddle_src, :paddle_dest, :ball_src, :ball_dest, :ball_vel)
+	CALL :print(&pong_instructions)
+	MOV 0x80FB > C
+	MOV C > MSP + :paddle_src
+	MOV 0x86FD > D
+	MOV D > MSP + :paddle_dest	//Initialize paddle_right_pong
+
+	MOV 0x8020 > C
+	MOV C > MSP + :ball_src
+	MOV 0x8222 > D
+	MOV D > MSP + :ball_dest	//Initialize ball
+
+	MOV 0x04FC > D
+	MOV D > MSP + :ball_vel
+
+	//Clear the screen
+	MOV :GPU_CONTROLLER > IDX
+	MOV :GPU_CLEAR_SCREEN_CMD > A
+	MOV A > MIX + :GPU_CMD	//Clear the screen
+
+	CALL :SetColor(&default_color)
+
+	DEFINE :pong_loop
+		//Do user input
+		MOV MEM + :getchar > A
+		MOV 0x61 > B	//lowercase a
+		OR A,B > NUL
+		JE :paddle_left_pong
+		MOV 0x64 > B	//lowercase d
+		OR A,B > NUL
+		JMP :paddle_right_pong
+		MOV 113 > B	///lowercase q
+		OR A,B > NUL
+		JMP :return_pong
+
+		DEFINE :cmp_x_axis_pong
+			MOV 0xFF00 > D
+			MOV MSP + :ball_src > C
+			AND D,C > C 	//Isolate x axis into C register
+			MOV 0x0200 > D
+			ADD16 C,D > NUL
+			JLTE :flip_x_pong
+
+			MOV 0xFF00 > D
+			MOV MSP + :ball_dest > C
+			AND D,C > C 	//Isolate x axis into C register
+			MOV 0xFD00 > D
+			ADD16 D,C > NUL
+			JLTE :flip_x_pong 	//If ball bound is greater than 254, then reverse direction
+		//:cmp_x_axis_pong
+
+
+		DEFINE :cmp_y_axis_pong
+			MOV 0x00FF > D
+			MOV MSP + :ball_src > C
+			AND C,D > C
+			MOV 2 > D
+			ADD16 C,D > NUL
+			JLTE :flip_y_pong
+
+			
+			MOV 0x00FF > D
+			MOV MSP + :ball_dest > C
+			AND C,D > C
+			MOV 0x00FB > D
+			ADD16 D,C > NUL
+			JGT :move_ball_pong
+			
+			//Check for ball hitting paddle
+			MOV 0xFF00 > D
+			MOV MSP + :ball_src > C
+			AND C,D > C
+			MOV MSP + :paddle_dest > IDX
+			AND IDX,D > IDX
+			ADD16 C,IDX > NUL
+			JGT :return_pong
+			
+			MOV 0xFF00 > D
+			MOV MSP + :ball_dest > C
+			AND C,D > C
+			MOV MSP + :paddle_src > IDX
+			AND IDX,D > IDX
+			ADD16 IDX,C > NUL
+			JLT :add_score_pong
+			GOTO :return_pong
+		//:cmp_y_axis_pong
+		
+
+		DEFINE :move_ball_pong
+			MOV MSP + :ball_vel > D
+			MOV MSP + :ball_src > C
+			ADD C,D > C
+			MOV C > MSP + :ball_src
+			MOV MSP + :ball_dest > C
+			ADD C,D > C
+			MOV C > MSP + :ball_dest
+		//:move_ball_pong
+
+
+		DEFINE :draw_paddle_pong
+			//Clear the screen
+			MOV :GPU_CONTROLLER > IDX
+			MOV :GPU_CLEAR_SCREEN_CMD > A
+			MOV A > MIX + :GPU_CMD	//Clear the screen
+			CALL :DrawRect(:ball_src, :ball_dest)
+
+			CALL :DrawRect(:paddle_src, :paddle_dest)
+		//:draw_paddle_pong
+
+	GOTO :pong_loop
+
+	DEFINE :paddle_left_pong
+		MOV 0xFB00 > D
+		MOV MSP + :paddle_src > C
+		ADD D,C > C
+		MOV C > MSP + :paddle_src
+
+		MOV MSP + :paddle_dest > C
+		ADD D,C > C
+		MOV C > MSP + :paddle_dest
+		GOTO :cmp_x_axis_pong
+	//:paddle_left_pong
+	
+	DEFINE :paddle_right_pong
+		MOV 0x0500 > D
+		MOV MSP + :paddle_src > C
+		ADD D,C > C
+		MOV C > MSP + :paddle_src
+
+		MOV MSP + :paddle_dest > C
+		ADD D,C > C
+		MOV C > MSP + :paddle_dest
+		GOTO :cmp_x_axis_pong
+	//:paddle_left_pong
+
+	DEFINE :flip_x_pong
+		MOV MSP + :ball_vel > C
+		MOV 0xFF01 > D
+		MULSIGN C,D > C
+		MOV C > MSP + :ball_vel
+		GOTO :cmp_y_axis_pong
+	//:flip_x_pong
+
+	DEFINE :flip_y_pong
+		MOV MSP + :ball_vel > C
+		MOV 0x01FF > D
+		MULSIGN C,D > C
+		MOV C > MSP + :ball_vel
+		GOTO :move_ball_pong
+	//:flip_x_pong
+
+	DEFINE :add_score_pong
+		MOV 73 > A
+		MOV A > MEM + :putchar
+		GOTO :flip_y_pong
+	//:add_score_pong
+
+	DEFINE :return_pong
+		CALL :print(&lose_pong)
+		RETURN
+	//:return_pong
 //func :pong
+
+FUNC :fibo > RETURN(:ret) > PARAM(:index_fibo) > LOCAL()
+	MOV 0 > A
+	MOV MSP + :index_fibo > B
+
+	MOV 0 > C
+	MOV 1 > D
+
+	DEFINE :loop_fibo
+		MOV D > IDX
+		ADD C,D > D
+		MOV IDX > C
+		OR A,B > NUL
+		JNE :loop_fibo
+		ADD A,1 > A
+	//:loop_fibo
+	MOV IDX > MSP + :index_fibo
+	RETURN :index_fibo
+//func :fibo
 
 
 DEFINE :startup_prompt
@@ -548,6 +751,7 @@ RAW 0x22EE22
 DEFINE :main
 	CALL :InitializeHeap()
 	
+	
 	CALL :shell()
 
 //:main
@@ -556,22 +760,28 @@ GOTO :end
 
 
 DEFINE :program_table
+RAW :calc_shell_cmd
+RAW :calc
+
+RAW :clear_shell_cmd
+RAW :clear_tty
+
+RAW :list_shell_cmd
+RAW :list
+
 RAW :paint_shell_cmd		//String to compare with
 RAW :paint_program			//Entrypoint to program function
 
 RAW :pong_shell_cmd
 RAW :pong
 
-RAW :calc_shell_cmd
-RAW :calc
-
-RAW :list_shell_cmd
-RAW :list
 RAW 0x0000	//Terminate end of program table
 
 
 DEFINE :calc_shell_cmd
 RAW "calc"
+DEFINE :clear_shell_cmd
+RAW "clear"
 DEFINE :list_shell_cmd
 RAW "list"
 DEFINE :paint_shell_cmd

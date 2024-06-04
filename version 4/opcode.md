@@ -9,7 +9,7 @@
 	Address is ARG
 
 2 I/O Stack - MSP
-	1 arg for offset
+	2 args for offset
 	Address is SP + offset arg0 can be negative
 
 3 I/O Indexed - MIX
@@ -57,7 +57,7 @@
 	2 args for address
 
 2 I/O Stack - MSP
-	1 arg is the signed offset
+	2 args is the signed offset
 	Address is SP + offset ARG0
 3 I/O Indexed - MIX
 

@@ -51,7 +51,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 
 	
 	const parseToken = (token, offset) => {
-		if(token.substring(0, 1) != ':' && token.substring(token.length-1).toLowerCase() == 'b') {
+		if(token.substring(0, 1) != ':' && token.substring(token.length-1) == 'b') {
 			token = token.substring(0, token.length-1);
 			if(!isNaN(parseInt(token))) {
 				if(parseInt(token) >= 0) {
@@ -91,12 +91,12 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 		'SHIFT': 224,
 		'DIV': 16,
 		'REM': 48,
-		"NAND": 80,
+		"MULSIGN": 80,
 		'ADD16': 112,
 		'SUB16': 144,
 		'MUL16': 176,
 		'DIV16': 208,
-		'REM16': 240
+		'REM16': 240,
 	};
 	
 
@@ -252,6 +252,7 @@ document.getElementById('assemble').addEventListener('click', (e) => {
 			case "SUB":
 			case "MUL":
 			case "DIV":
+			case "MULSIGN":
 			case "REM":
 			case "OR":
 			case "AND":
