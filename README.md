@@ -1,4 +1,19 @@
 # LogisimCPU
+### Version 4
+The latest version 4 of this project is available in the version 4 directory.  
+This latest version includes a simple shell with access to different programs such as pong or a painting program.  
+This new cpu has much more capability to work with pointers as well as do function calls on the stack.  
+The stdlib.asm program has examples of iterating through strings based on pointers passed on the stack, indexed based addressing, device management and much more.  
+There is also a simple implementation of malloc in the code to allocate new memory on the stack.  
+I've made a video with instructions on how to start it using the included JS assembler:  
+  
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/viT7sIJhgzI/0.jpg)](http://www.youtube.com/watch?v=viT7sIJhgzI "Logisim Computer v4 - Instructions")
+
+
+
+
+
+### Instructions for original:
 A CPU I made in logisim with a graphics output and tty interface. It comes with the machine code for pong. Also an assembler written in Java with the assembly code for pong.
 
 How to operate and load Pong Code:
