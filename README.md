@@ -1,6 +1,6 @@
 # LogisimCPU
 ### Version 4
-The latest version 4 of this project is available in the version 4 directory.  
+The latest version 4 of this project is available in the version 4 directory using the latest version of Logisim Evolution which is the successor to the original logisim program.  
 This latest version includes a simple shell with access to different programs such as pong or a painting program.  
 This new cpu has much more capability to work with pointers as well as do function calls on the stack.  
 The stdlib.asm program has examples of iterating through strings based on pointers passed on the stack, indexed based addressing, device management and much more.  
